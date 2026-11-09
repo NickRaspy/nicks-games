@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Игры Ника</title>
+<style>
+  :root { --paper:#fff; --ink:#161618; --muted:#5f6268; --line:#d3d6da; --key:#d3d6da; --absent:#66696d; --present:#a68124; --correct:#538d4e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper:#121213; --ink:#f8f8f8; --muted:#a5a7aa; --line:#3a3a3c; --key:#424447; --absent:#3a3a3c; --present:#8f782f; }
+  }
+  body { margin:0; padding:0 8px 12px; background:var(--paper); color:var(--ink); font-family:system-ui,sans-serif; text-align:center; }
+  header { position:relative; padding:12px 4px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font:700 26px/1.1 ui-serif,serif; }
+  p { margin:8px 0; }
+  button { border:0; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:700; }
+  #back { position:absolute; top:8px; left:2px; width:34px; height:34px; background:var(--key); color:var(--ink); font-size:18px; }
+  #home, #setup { max-width:340px; margin:12px auto 4px; }
+  .card { display:flex; width:100%; align-items:center; gap:12px; padding:12px; background:var(--paper); color:var(--ink); border:1px solid var(--line); text-align:left; }
+  .icon { padding:6px 9px; border-radius:3px; }
+  .small { color:var(--muted); font-size:12px; }
+  .choices, .keys { display:flex; gap:3px; margin:5px 0; }
+  .choice, .action { min-height:38px; padding:6px 12px; background:var(--key); color:var(--ink); }
+  .choice { flex:1; }
+  .chosen, .action { background:#39713b; color:#fff; }
+  #play { width:100%; margin-top:5px; }
+  #board { width:100%; max-width:235px; margin:10px auto 0; }
+  .row { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin-bottom:4px; }
+  .tile { display:flex; align-items:center; justify-content:center; height:36px; border:2px solid var(--line); font-size:24px; font-weight:750; }
+  .filled { border-color:var(--muted); }
+  .m0 { background:var(--absent); color:#fff; border-color:var(--absent); }
+  .m1 { background:var(--present); color:#fff; border-color:var(--present); }
+  .m2 { background:var(--correct); color:#fff; border-color:var(--correct); }
+  #keyboard { max-width:390px; margin:auto; }
+  .key { flex:1; min-width:0; min-height:36px; padding:0; background:var(--key); color:var(--ink); font-size:14px; font-weight:850; }
+  .key-absent { background:#18191c; color:#fff; }
+  .key-present { background:#855b10; color:#fff; }
+  .key-correct { background:#39713b; color:#fff; }
+  .wide { flex:1.7; font-size:10px; }
+  #again { margin-top:6px; }
+  .modal { position:fixed; top:0; right:0; bottom:0; left:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.58); }
+  .panel { max-width:280px; margin:12px; padding:14px; border-radius:8px; background:var(--paper); }
+  .hide { display:none; }
+</style>
+<header>
+  <button id="back" class="hide" type="button">‹</button>
+  <h1 id="title">Игры Ника</h1>
+</header>
+<section id="home">
+  <button id="open" class="card" type="button">
+    <span class="icon m2" aria-hidden="true">W</span>
+    <strong>Wordle</strong>
+  </button>
+</section>
+<section id="setup" class="hide">
+  <p id="language"></p>
+  <div class="choices">
+    <button id="ru" class="choice" type="button" lang="ru">Русский</button>
+    <button id="en" class="choice" type="button" lang="en">English</button>
+  </div>
+  <button id="play" class="action" type="button"></button>
+  <p id="setupStatus" class="small hide" aria-live="polite"></p>
+</section>
+<section id="round" class="hide">
+  <div id="board"></div>
+  <p id="status" class="small" aria-live="polite"></p>
+  <div id="keyboard"></div>
+  <button id="again" class="action hide" type="button"></button>
+</section>
+<div id="exitDialog" class="modal hide" role="alertdialog" aria-modal="true" aria-labelledby="exitQuestion">
+  <div class="panel">
+    <p id="exitQuestion"></p>
+    <div class="choices">
+      <button id="stay" class="choice" type="button"></button>
+      <button id="leave" class="action" type="button"></button>
+    </div>
+  </div>
+</div>
+<script src="./data/guesses.js"></script>
+<script src="./data/wordle.js"></script>
+<script>
+  const byId = id => document.getElementById(id);
+  const widget = window.TelegramWidget;
+  const localization = widget && JSON.parse(widget.chatData);
+  const locale = localization?.locale || (/^ru(?:-|$)/i.test(navigator.language || '') ? 'ru' : 'en');
+  const text = localization?.text || window.nickWordle.copy[locale];
+  const languages = {
+    ru: { keys:['ЙЦУКЕНГШЩЗХЪ','ФЫВАПРОЛДЖЭ','↵ЯЧСМИТЬБЮ⌫'], word:/^[А-Я]{5}$/u, storage:'slovo-v1' },
+    en: { keys:['QWERTYUIOP','ASDFGHJKL','↵ZXCVBNM⌫'], word:/^[A-Z]{5}$/, storage:'wordle-en-v1' },
+  };
+  const keyMarks = ['key-absent','key-present','key-correct'];
+  const tiles = [];
+  const board = byId('board');
+  const keyboard = byId('keyboard');
+  const statusLabel = byId('status');
+  const again = byId('again');
+  const exitDialog = byId('exitDialog');
+  const rounds = {};
+  let keys = {};
+  let page = 'home';
+  let selected = locale;
+  let game;
+  let draft = '';
+  let submitted = '';
+  let busy = false;
+
+  document.documentElement.lang = locale;
+  for (const id of ['title','language','play','again','exitQuestion','stay','leave']) byId(id).textContent = text[id];
+  byId('back').setAttribute('aria-label', text.back);
+
+  function show(next) {
+    page = next;
+    for (const id of ['home','setup','round']) byId(id).className = id === next ? '' : 'hide';
+    byId('title').textContent = next === 'home' ? text.title : 'Wordle';
+    byId('back').className = next === 'home' ? 'hide' : '';
+    setupStatus();
+  }
+
+  function setupStatus(message = '') {
+    const label = byId('setupStatus');
+    label.textContent = message;
+    label.className = message ? 'small' : 'small hide';
+  }
+
+  function select(language) {
+    selected = language;
+    for (const id of Object.keys(languages)) {
+      byId(id).className = id === selected ? 'choice chosen' : 'choice';
+      byId(id).setAttribute('aria-pressed', String(id === selected));
+    }
+    setupStatus();
+  }
+
+  function restore(config) {
+    if (rounds[config.storage]) return rounds[config.storage];
+    try {
+      const saved = JSON.parse(localStorage.getItem(config.storage));
+      const valid = value => typeof value === 'string' && config.word.test(value);
+      if (valid(saved?.answer) && Array.isArray(saved.guesses)
+          && saved.guesses.length <= 6 && saved.guesses.every(valid)) return saved;
+      if (valid(saved?.previous)) return saved;
+    } catch {}
+  }
+
+  function save(state = game) {
+    const key = languages[selected].storage;
+    rounds[key] = state;
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
+  }
+
+  async function ask(data) {
+    if (widget) return (await widget.request(data)).result;
+    return window.nickWordle.command(data);
+  }
+
+  async function begin(newWord) {
+    if (busy || !exitDialog.classList.contains('hide')) return;
+    const config = languages[selected];
+    const saved = newWord ? undefined : restore(config);
+    if (saved?.answer) {
+      game = saved;
+    } else {
+      busy = true;
+      if (newWord) render(text.loading);
+      else setupStatus(text.loading);
+      try {
+        const previous = newWord ? game.answer : saved?.previous ?? '';
+        const answer = await ask('start:' + selected + ':' + previous);
+        if (typeof answer !== 'string' || !config.word.test(answer)) throw new Error();
+        game = { answer, guesses:[] };
+      } catch {
+        if (newWord) render(text.retry);
+        else setupStatus(text.retry);
+        return;
+      } finally {
+        busy = false;
+      }
+    }
+    draft = '';
+    save();
+    buildKeys(config.keys);
+    show('round');
+    render();
+  }
+
+  for (let r = 0; r < 6; r++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    for (let c = 0; c < 5; c++) {
+      const tile = document.createElement('div');
+      tiles.push(tile);
+      row.appendChild(tile);
+    }
+    board.appendChild(row);
+  }
+
+  function buildKeys(rows) {
+    keyboard.textContent = '';
+    keys = {};
+    for (const letters of rows) {
+      const row = document.createElement('div');
+      row.className = 'keys';
+      for (const letter of letters) {
+        const key = document.createElement('button');
+        key.type = 'button';
+        const special = letter === '↵' || letter === '⌫';
+        key.className = special ? 'key wide' : 'key';
+        key.textContent = letter === '↵' ? text.enter : letter;
+        if (letter === '⌫') key.setAttribute('aria-label', text.erase);
+        key.addEventListener('click', () => press(letter));
+        if (!special) keys[letter] = key;
+        row.appendChild(key);
+      }
+      keyboard.appendChild(row);
+    }
+  }
+
+  function score(word) {
+    const marks = [0,0,0,0,0];
+    const remaining = game.answer.split('');
+    for (let i = 0; i < 5; i++) {
+      if (word[i] === remaining[i]) {
+        marks[i] = 2;
+        remaining[i] = '';
+      }
+    }
+    for (let i = 0; i < 5; i++) {
+      if (marks[i] === 2) continue;
+      const slot = remaining.indexOf(word[i]);
+      if (slot >= 0) {
+        marks[i] = 1;
+        remaining[slot] = '';
+      }
+    }
+    return marks;
+  }
+
+  function won() { return game.guesses[game.guesses.length - 1] === game.answer; }
+  function finished() { return won() || game.guesses.length === 6; }
+  function draftRow() { return game.guesses.length + (submitted ? 1 : 0); }
+
+  function drawTile(index, letter = '', mark) {
+    const tile = tiles[index];
+    tile.textContent = letter;
+    tile.className = 'tile' + (mark !== undefined ? ' m' + mark : (letter ? ' filled' : ''));
+  }
+
+  function renderStatus(message = '') {
+    const prompt = text.word + (selected === 'ru' ? ' · Ё = Е' : '');
+    const label = message || (won() ? text.won + ' ' + game.guesses.length + '/6'
+      : finished() ? text.answer + game.answer : prompt);
+    if (statusLabel.textContent !== label) statusLabel.textContent = label;
+  }
+
+  function render(message = '') {
+    const best = {};
+    for (let r = 0; r < 6; r++) {
+      const word = game.guesses[r];
+      const marks = word ? score(word) : null;
+      const letters = word || (r === draftRow() ? draft : r === game.guesses.length ? submitted : '');
+      for (let c = 0; c < 5; c++) {
+        const letter = letters[c];
+        drawTile(r * 5 + c, letter, marks?.[c]);
+        if (marks) best[letter] = Math.max(best[letter] ?? -1, marks[c]);
+      }
+    }
+    for (const letter of Object.keys(keys)) {
+      const mark = keyMarks[best[letter]];
+      keys[letter].className = mark ? 'key ' + mark : 'key';
+    }
+    renderStatus(message);
+    again.className = finished() ? 'action' : 'action hide';
+  }
+
+  function press(key) {
+    if (busy || !exitDialog.classList.contains('hide') || finished()) return;
+    if (key === '↵') return submit();
+    const row = draftRow();
+    if (row >= 6) return;
+    if (key === '⌫' && draft.length) {
+      draft = draft.slice(0, -1);
+      drawTile(row * 5 + draft.length);
+    } else if (key !== '⌫' && draft.length < 5) {
+      drawTile(row * 5 + draft.length, key);
+      draft += key;
+    }
+    if (!submitted) renderStatus();
+  }
+
+  async function submit() {
+    if (submitted) return;
+    if (draft.length !== 5) return renderStatus(text.length);
+    const word = draft;
+    submitted = word;
+    draft = '';
+    let result = '1';
+    if (word !== game.answer && !game.guesses.includes(word)) {
+      renderStatus(text.checking);
+      try {
+        result = await ask('guess:' + selected + ':' + word);
+      } catch {
+        result = 'retry';
+      }
+    }
+    submitted = '';
+    if (result === '1') {
+      game.guesses.push(word);
+      if (finished()) draft = '';
+      save();
+      return render();
+    }
+    if (!draft) draft = word;
+    render(result === '0' ? text.missing : text.retry);
+  }
+
+  byId('open').addEventListener('click', () => show('setup'));
+  byId('back').addEventListener('click', () => {
+    if (busy || submitted) return;
+    if (page === 'round') exitDialog.className = 'modal';
+    else show('home');
+  });
+  byId('stay').addEventListener('click', () => { exitDialog.className = 'modal hide'; });
+  byId('leave').addEventListener('click', () => {
+    if (!game) return;
+    save({ previous:game.answer });
+    game = undefined;
+    draft = '';
+    exitDialog.className = 'modal hide';
+    show('setup');
+  });
+  for (const language of Object.keys(languages)) {
+    byId(language).addEventListener('click', () => { if (!busy) select(language); });
+  }
+  byId('play').addEventListener('click', () => begin(false));
+  again.addEventListener('click', () => begin(true));
+  select(selected);
+</script>
+</html>

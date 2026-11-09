@@ -1,0 +1,9 @@
+{
+  "framework": null,
+  "functions": {
+    "api/telegram.ts": {
+      "includeFiles": "wordle.html",
+      "maxDuration": 30
+    }
+  }
+}
