@@ -14,7 +14,7 @@
   p { margin:8px 0; }
   button { border:0; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:700; }
   #back { position:absolute; top:8px; left:2px; width:34px; height:34px; background:var(--key); color:var(--ink); font-size:18px; }
-  #setup { max-width:340px; margin:12px auto 4px; }
+  #setup, #hub nav { max-width:340px; margin:12px auto 4px; }
   .small { color:var(--muted); font-size:12px; }
   .choices, .keys { display:flex; gap:3px; margin:5px 0; }
   .choice, .action { min-height:38px; padding:6px 12px; background:var(--key); color:var(--ink); }
@@ -39,6 +39,7 @@
   .panel { max-width:280px; margin:12px; padding:14px; border-radius:8px; background:var(--paper); }
   .hide { display:none; }
 </style>
+<main id="wordleGame">
 <header>
   <button id="back" type="button">‹</button>
   <h1>Wordle</h1>
@@ -67,14 +68,17 @@
     </div>
   </div>
 </div>
+</main>
 <script src="./data/guesses.js"></script>
 <script src="./data/wordle.js"></script>
 <script>
   const byId = id => document.getElementById(id);
-  const requestedLocale = new URLSearchParams(location.search).get('lang');
+  const widget = window.TelegramWidget;
+  const localization = widget && JSON.parse(widget.chatData);
+  const requestedLocale = widget ? localization.locale : new URLSearchParams(location.search).get('lang');
   const locale = requestedLocale === 'ru' || requestedLocale === 'en' ? requestedLocale
     : /^ru(?:-|$)/i.test(navigator.language || '') ? 'ru' : 'en';
-  const text = window.nickWordle.copy[locale];
+  const text = widget ? localization.text : window.nickWordle.copy[locale];
   const languages = {
     ru: { keys:['ЙЦУКЕНГШЩЗХЪ','ФЫВАПРОЛДЖЭ','↵ЯЧСМИТЬБЮ⌫'], word:/^[А-Я]{5}$/u, storage:'slovo-v1' },
     en: { keys:['QWERTYUIOP','ASDFGHJKL','↵ZXCVBNM⌫'], word:/^[A-Z]{5}$/, storage:'wordle-en-v1' },
@@ -95,7 +99,13 @@
   let submitted = '';
   let busy = false;
 
-  document.documentElement.lang = locale;
+  if (widget) {
+    byId('title').textContent = text.title;
+    byId('wordle').addEventListener('click', () => {
+      byId('hub').classList.add('hide');
+      byId('wordleGame').classList.remove('hide');
+    });
+  } else document.documentElement.lang = locale;
   for (const id of ['language','play','again','exitQuestion','stay','leave']) byId(id).textContent = text[id];
   byId('back').setAttribute('aria-label', text.back);
 
@@ -137,6 +147,11 @@
     try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
   }
 
+  async function ask(data) {
+    if (widget) return (await widget.request(data)).result;
+    return window.nickWordle.command(data);
+  }
+
   async function begin(newWord) {
     if (busy || !exitDialog.classList.contains('hide')) return;
     const config = languages[selected];
@@ -149,7 +164,7 @@
       else setupStatus(text.loading);
       try {
         const previous = newWord ? game.answer : saved?.previous ?? '';
-        const answer = await window.nickWordle.command('start:' + selected + ':' + previous);
+        const answer = await ask('start:' + selected + ':' + previous);
         if (typeof answer !== 'string' || !config.word.test(answer)) throw new Error();
         game = { answer, guesses:[] };
       } catch {
@@ -271,6 +286,57 @@
     if (!submitted) renderStatus();
   }
 
+  async function submit() {
+    if (submitted) return;
+    if (draft.length !== 5) return renderStatus(text.length);
+    const word = draft;
+    submitted = word;
+    draft = '';
+    let result = '1';
+    if (word !== game.answer && !game.guesses.includes(word)) {
+      renderStatus(text.checking);
+      try {
+        result = await ask('guess:' + selected + ':' + word);
+      } catch {
+        result = 'retry';
+      }
+    }
+    submitted = '';
+    if (result === '1') {
+      game.guesses.push(word);
+      if (finished()) draft = '';
+      save();
+      return render();
+    }
+    if (!draft) draft = word;
+    render(result === '0' ? text.missing : text.retry);
+  }
+
+  byId('back').addEventListener('click', () => {
+    if (busy || submitted) return;
+    if (page === 'round') exitDialog.className = 'modal';
+    else if (widget) {
+      byId('wordleGame').classList.add('hide');
+      byId('hub').classList.remove('hide');
+    } else location.href = './nicks_games.html?lang=' + locale;
+  });
+  byId('stay').addEventListener('click', () => { exitDialog.className = 'modal hide'; });
+  byId('leave').addEventListener('click', () => {
+    if (!game) return;
+    save({ previous:game.answer });
+    game = undefined;
+    draft = '';
+    exitDialog.className = 'modal hide';
+    show('setup');
+  });
+  for (const language of Object.keys(languages)) {
+    byId(language).addEventListener('click', () => { if (!busy) select(language); });
+  }
+  byId('play').addEventListener('click', () => begin(false));
+  again.addEventListener('click', () => begin(true));
+  select(selected);
+</script>
+<script data-web-only>
   document.addEventListener('keydown', event => {
     if (page !== 'round' || busy || finished() || !exitDialog.classList.contains('hide')) return;
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -290,52 +356,5 @@
     event.preventDefault();
     press(key);
   });
-
-  async function submit() {
-    if (submitted) return;
-    if (draft.length !== 5) return renderStatus(text.length);
-    const word = draft;
-    submitted = word;
-    draft = '';
-    let result = '1';
-    if (word !== game.answer && !game.guesses.includes(word)) {
-      renderStatus(text.checking);
-      try {
-        result = await window.nickWordle.command('guess:' + selected + ':' + word);
-      } catch {
-        result = 'retry';
-      }
-    }
-    submitted = '';
-    if (result === '1') {
-      game.guesses.push(word);
-      if (finished()) draft = '';
-      save();
-      return render();
-    }
-    if (!draft) draft = word;
-    render(result === '0' ? text.missing : text.retry);
-  }
-
-  byId('back').addEventListener('click', () => {
-    if (busy || submitted) return;
-    if (page === 'round') exitDialog.className = 'modal';
-    else location.href = './nicks_games.html?lang=' + locale;
-  });
-  byId('stay').addEventListener('click', () => { exitDialog.className = 'modal hide'; });
-  byId('leave').addEventListener('click', () => {
-    if (!game) return;
-    save({ previous:game.answer });
-    game = undefined;
-    draft = '';
-    exitDialog.className = 'modal hide';
-    show('setup');
-  });
-  for (const language of Object.keys(languages)) {
-    byId(language).addEventListener('click', () => { if (!busy) select(language); });
-  }
-  byId('play').addEventListener('click', () => begin(false));
-  again.addEventListener('click', () => begin(true));
-  select(selected);
 </script>
 </html>
