@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Игры Ника</title>
+<style>
+  :root { color-scheme:light dark; }
+  body { margin:0; padding:0 8px 12px; background:var(--tg-theme-bg-color, Canvas); color:var(--tg-theme-text-color, CanvasText); font-family:system-ui,sans-serif; }
+  h1 { margin:0; padding:12px 4px; border-bottom:1px solid; text-align:center; font:700 26px/1.1 ui-serif,serif; }
+  nav { max-width:340px; margin:12px auto 4px; }
+  .card { display:flex; align-items:center; gap:12px; margin-top:8px; padding:12px; border:1px solid; border-radius:4px; color:inherit; text-decoration:none; font-weight:700; }
+  .icon { padding:6px 9px; border-radius:3px; background:#39713b; color:#fff; }
+</style>
+<h1 id="title">Игры Ника</h1>
+<nav>
+  <a id="wordle" class="card" href="./wordle.html"><span class="icon" aria-hidden="true">W</span>Wordle</a>
+</nav>
+<script>
+  const widget = window.TelegramWidget;
+  const requestedLocale = widget ? widget.chatData : new URLSearchParams(location.search).get('lang');
+  const locale = requestedLocale === 'ru' || requestedLocale === 'en' ? requestedLocale
+    : /^ru(?:-|$)/i.test(navigator.language || '') ? 'ru' : 'en';
+  if (locale === 'en') {
+    document.getElementById('title').textContent = "Nick's Games";
+  }
+  if (!widget) {
+    document.documentElement.lang = locale;
+    document.title = document.getElementById('title').textContent;
+    document.getElementById('wordle').href += '?lang=' + locale;
+  }
+</script>
+</html>

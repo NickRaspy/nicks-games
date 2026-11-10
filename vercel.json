@@ -2,7 +2,7 @@
   "framework": null,
   "functions": {
     "api/telegram.ts": {
-      "includeFiles": "wordle.html",
+      "includeFiles": "nicks_games.html",
       "maxDuration": 30
     }
   }

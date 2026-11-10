@@ -65,14 +65,19 @@ export async function telegram<T>(
   return result.result;
 }
 
+function publicUrl(value: string | undefined): URL | null {
+  const url = URL.parse(value?.trim() ?? '');
+  return url?.protocol === 'https:' && !url.username && !url.password
+    && !url.searchParams.has('x-vercel-protection-bypass') ? url : null;
+}
+
 export async function handleUpdate(token: string, update: Update): Promise<void> {
   const inline = update.inline_query;
   const callback = update.callback_query;
   if (inline || callback) {
     const game = process.env.TELEGRAM_GAME_SHORT_NAME?.trim();
-    const url = URL.parse(process.env.TELEGRAM_GAME_URL?.trim() ?? '');
-    const enabled = game && url?.protocol === 'https:' && !url.username && !url.password
-      && !url.searchParams.has('x-vercel-protection-bypass');
+    const url = publicUrl(process.env.TELEGRAM_GAME_URL);
+    const enabled = game && url;
 
     if (inline) {
       const matches = 'wordle'.startsWith(inline.query.trim().toLowerCase());
@@ -97,20 +102,43 @@ export async function handleUpdate(token: string, update: Update): Promise<void>
   }
 
   const message = update.message;
-  if (message?.chat.type !== 'private' || !/^\/(start|wordle)(?:\s|$)/i.test(message.text ?? '')) return;
-
-  const html = readFileSync(join(process.cwd(), 'wordle.html'), 'utf8')
-    .replace(/<script src="\.\/data\/(?:guesses|wordle)\.js"><\/script>\r?\n/g, '')
-    .replaceAll('\r\n', '\n')
-    .replace(/^ +/gm, '');
+  if (message?.chat.type !== 'private') return;
+  const command = /^\/(start|wordle)(?:\s|$)/i.exec(message.text ?? '')?.[1]?.toLowerCase();
+  if (!command) return;
   const locale = /^ru(?:-|$)/i.test(message.from?.language_code ?? 'ru') ? 'ru' : 'en';
-  const text = globalThis.nickWordle.copy[locale];
+  const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  const site = publicUrl(process.env.TELEGRAM_GAME_URL)
+    ?? publicUrl(productionHost && `https://${productionHost}`);
+  if (!site) {
+    await telegram(token, 'sendMessage', {
+      chat_id: message.chat.id,
+      text: locale === 'ru' ? 'Адрес игр пока не настроен.' : 'The games URL has not been configured yet.',
+    });
+    return;
+  }
+
+  const pageUrl = (file: string) => new URL(`/${file}?lang=${locale}`, site).href;
+  if (command === 'wordle') {
+    await telegram(token, 'sendMessage', {
+      chat_id: message.chat.id,
+      text: 'Wordle',
+      reply_markup: {
+        inline_keyboard: [[{
+          text: globalThis.nickWordle.copy[locale].play,
+          web_app: { url: pageUrl('wordle.html') },
+        }]],
+      },
+    });
+    return;
+  }
+
+  const html = readFileSync(join(process.cwd(), 'nicks_games.html'), 'utf8')
+    .replace('href="./wordle.html"', `href="${pageUrl('wordle.html')}"`);
   await telegram(token, 'sendWidget', {
     chat_id: message.chat.id,
     html,
     width: 360,
-    caption: text.title,
-    chat_data: JSON.stringify({ locale, text }),
-    allow_queries: true,
+    caption: globalThis.nickWordle.copy[locale].title,
+    chat_data: locale,
   });
 }
