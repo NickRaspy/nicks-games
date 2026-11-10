@@ -286,6 +286,26 @@
     if (!submitted) renderStatus();
   }
 
+  document.addEventListener('keydown', event => {
+    if (page !== 'round' || busy || finished() || !exitDialog.classList.contains('hide')) return;
+    if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+
+    let key = event.key;
+    if (key === 'Enter') {
+      if (event.target === byId('back')) return;
+      key = '↵';
+    } else if (key === 'Backspace') {
+      key = '⌫';
+    } else {
+      key = key.toUpperCase();
+      if (key === 'Ё') key = 'Е';
+      if (!Object.hasOwn(keys, key)) return;
+    }
+
+    event.preventDefault();
+    press(key);
+  });
+
   async function submit() {
     if (submitted) return;
     if (draft.length !== 5) return renderStatus(text.length);
