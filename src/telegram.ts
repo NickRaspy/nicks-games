@@ -12,6 +12,8 @@ declare global {
 
 export type Update = {
   update_id: number;
+  inline_query?: { id: string; query: string };
+  callback_query?: { id: string; game_short_name?: string };
   message?: {
     chat: { id: number; type: string };
     from?: { language_code?: string };
@@ -27,7 +29,7 @@ export type Update = {
 
 type TelegramResult<T> = { ok: true; result: T } | { ok: false; description?: string };
 
-export const updates = ['message', 'widget_query'];
+export const updates = ['message', 'widget_query', 'inline_query', 'callback_query'];
 
 export function botToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -64,6 +66,27 @@ export async function telegram<T>(
 }
 
 export async function handleUpdate(token: string, update: Update): Promise<void> {
+  const inline = update.inline_query;
+  const callback = update.callback_query;
+  if (inline || callback) {
+    const game = process.env.TELEGRAM_GAME_SHORT_NAME?.trim();
+    const url = URL.parse(process.env.TELEGRAM_GAME_URL?.trim() ?? '');
+    const enabled = game && url?.protocol === 'https:' && !url.username && !url.password
+      && !url.searchParams.has('x-vercel-protection-bypass');
+
+    if (inline) {
+      const matches = 'wordle'.startsWith(inline.query.trim().toLowerCase());
+      await telegram(token, 'answerInlineQuery', {
+        inline_query_id: inline.id,
+        results: enabled && matches ? [{ type: 'game', id: game, game_short_name: game }] : [],
+        cache_time: 0,
+      });
+    } else if (enabled && callback?.game_short_name === game) {
+      await telegram(token, 'answerCallbackQuery', { callback_query_id: callback.id, url: url.href });
+    }
+    return;
+  }
+
   const query = update.widget_query;
   if (query) {
     const data = query.chat?.type === 'private' && query.type.type === 'data'
