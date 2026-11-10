@@ -14,7 +14,7 @@
   p { margin:8px 0; }
   button { border:0; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:700; }
   #back { position:absolute; top:8px; left:2px; width:34px; height:34px; background:var(--key); color:var(--ink); font-size:18px; }
-  #setup, #hub nav { max-width:340px; margin:12px auto 4px; }
+  #setup { max-width:340px; margin:12px auto 4px; }
   .small { color:var(--muted); font-size:12px; }
   .choices, .keys { display:flex; gap:3px; margin:5px 0; }
   .choice, .action { min-height:38px; padding:6px 12px; background:var(--key); color:var(--ink); }
@@ -71,14 +71,22 @@
 </main>
 <script src="./data/guesses.js"></script>
 <script src="./data/wordle.js"></script>
+<script data-web-only>
+  const requestedLocale = new URLSearchParams(location.search).get('lang');
+  const webLocale = requestedLocale === 'ru' || requestedLocale === 'en' ? requestedLocale
+    : /^ru(?:-|$)/i.test(navigator.language || '') ? 'ru' : 'en';
+  const webWordle = {
+    locale: webLocale,
+    text: window.nickWordle.copy[webLocale],
+    ask: data => window.nickWordle.command(data),
+    back: () => { location.href = './nicks_games.html?lang=' + webLocale; },
+  };
+  document.documentElement.lang = webLocale;
+</script>
 <script>
   const byId = id => document.getElementById(id);
   const widget = window.TelegramWidget;
-  const localization = widget && JSON.parse(widget.chatData);
-  const requestedLocale = widget ? localization.locale : new URLSearchParams(location.search).get('lang');
-  const locale = requestedLocale === 'ru' || requestedLocale === 'en' ? requestedLocale
-    : /^ru(?:-|$)/i.test(navigator.language || '') ? 'ru' : 'en';
-  const text = widget ? localization.text : window.nickWordle.copy[locale];
+  const { locale, text } = widget ? JSON.parse(widget.chatData) : webWordle;
   const languages = {
     ru: { keys:['ЙЦУКЕНГШЩЗХЪ','ФЫВАПРОЛДЖЭ','↵ЯЧСМИТЬБЮ⌫'], word:/^[А-Я]{5}$/u, storage:'slovo-v1' },
     en: { keys:['QWERTYUIOP','ASDFGHJKL','↵ZXCVBNM⌫'], word:/^[A-Z]{5}$/, storage:'wordle-en-v1' },
@@ -105,7 +113,7 @@
       byId('hub').classList.add('hide');
       byId('wordleGame').classList.remove('hide');
     });
-  } else document.documentElement.lang = locale;
+  }
   for (const id of ['language','play','again','exitQuestion','stay','leave']) byId(id).textContent = text[id];
   byId('back').setAttribute('aria-label', text.back);
 
@@ -149,7 +157,7 @@
 
   async function ask(data) {
     if (widget) return (await widget.request(data)).result;
-    return window.nickWordle.command(data);
+    return webWordle.ask(data);
   }
 
   async function begin(newWord) {
@@ -318,7 +326,7 @@
     else if (widget) {
       byId('wordleGame').classList.add('hide');
       byId('hub').classList.remove('hide');
-    } else location.href = './nicks_games.html?lang=' + locale;
+    } else webWordle.back();
   });
   byId('stay').addEventListener('click', () => { exitDialog.className = 'modal hide'; });
   byId('leave').addEventListener('click', () => {

@@ -74,8 +74,8 @@ function publicUrl(value: string | undefined): URL | null {
 function gamesWidget(openWordle: boolean): string {
   const hub = readFileSync(join(process.cwd(), 'nicks_games.html'), 'utf8');
   const wordle = readFileSync(join(process.cwd(), 'wordle.html'), 'utf8');
-  const hubView = hub.slice(hub.indexOf('<div id="hub">'), hub.indexOf('<!-- end hub -->'))
-    .replace(/<a id="wordle"[^>]*>.*?<\/a>/, '<button id="wordle" class="action" type="button">Wordle</button>');
+  const hubView = hub.match(/<!-- start hub -->([\s\S]*?)<!-- end hub -->/)![1]
+    .replace(/<a (id="wordle" class="card") href="\.\/wordle\.html">(.*?)<\/a>/, '<button $1 type="button">$2</button>');
   const game = wordle.slice(wordle.indexOf('<style>'), wordle.lastIndexOf('</html>'))
     .replace(/<script src="\.\/data\/(?:guesses|wordle)\.js"><\/script>\r?\n/g, '');
   const html = openWordle ? hubView.replace('<div id="hub">', '<div id="hub" class="hide">') + game

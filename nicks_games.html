@@ -4,17 +4,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Игры Ника</title>
 <style>
-  :root { color-scheme:light dark; }
+  :root { color-scheme:light dark; --paper:Canvas; --ink:CanvasText; --line:GrayText; --correct:#538d4e; }
   body { margin:0; padding:0 8px 12px; background:var(--tg-theme-bg-color, Canvas); color:var(--tg-theme-text-color, CanvasText); font-family:system-ui,sans-serif; }
   #hub h1 { margin:0; padding:12px 4px; border-bottom:1px solid; text-align:center; font:700 26px/1.1 ui-serif,serif; }
+  a.card { box-sizing:border-box; border-radius:4px; text-decoration:none; font-weight:700; }
+</style>
+<!-- start hub -->
+<style>
   #hub nav { max-width:340px; margin:12px auto 4px; }
-  .card { display:flex; width:100%; box-sizing:border-box; align-items:center; gap:12px; margin-top:8px; padding:12px; border:1px solid; border-radius:4px; background:transparent; color:inherit; text-decoration:none; font:700 16px system-ui,sans-serif; }
-  .icon { padding:6px 9px; border-radius:3px; background:#39713b; color:#fff; }
+  .card { display:flex; width:100%; align-items:center; gap:12px; padding:12px; background:var(--paper); color:var(--ink); border:1px solid var(--line); text-align:left; }
+  .icon { padding:6px 9px; border-radius:3px; background:var(--correct); color:#fff; }
 </style>
 <div id="hub">
   <header><h1 id="title">Игры Ника</h1></header>
   <nav>
-    <a id="wordle" class="card" href="./wordle.html"><span class="icon" aria-hidden="true">W</span>Wordle</a>
+    <a id="wordle" class="card" href="./wordle.html"><span class="icon" aria-hidden="true">W</span><strong>Wordle</strong></a>
   </nav>
 </div>
 <!-- end hub -->
